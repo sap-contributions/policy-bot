@@ -29,13 +29,9 @@ type Predicates struct {
 
 	ModifiedLines *ModifiedLines `yaml:"modified_lines"`
 
-	HasStatus *HasStatus `yaml:"has_status"`
-	// `has_successful_status` is a deprecated field that is kept for backwards
-	// compatibility.  `has_status` replaces it, and can accept any conclusion
-	// rather than just "success".
-	HasSuccessfulStatus *HasSuccessfulStatus `yaml:"has_successful_status"`
+	HasStatusCheck *HasStatusCheck `yaml:"has_status_check"`
 
-	HasWorkflowResult *HasWorkflowResult `yaml:"has_workflow_result"`
+	HasWorkflow *HasWorkflow `yaml:"has_workflow"`
 
 	HasLabels *HasLabels `yaml:"has_labels"`
 
@@ -45,6 +41,12 @@ type Predicates struct {
 	HasValidSignatures       *HasValidSignatures       `yaml:"has_valid_signatures"`
 	HasValidSignaturesBy     *HasValidSignaturesBy     `yaml:"has_valid_signatures_by"`
 	HasValidSignaturesByKeys *HasValidSignaturesByKeys `yaml:"has_valid_signatures_by_keys"`
+
+	// `has_successful_status`, `has_workflow_result` and `has_status` are deprecated fields that are kept for backwards
+	// compatibility.  `has_status_check` and `has_workflow` replaces it, and can accept any conclusion and status.
+	HasStatus           *HasStatus           `yaml:"has_status"`
+	HasSuccessfulStatus *HasSuccessfulStatus `yaml:"has_successful_status"`
+	HasWorkflowResult   *HasWorkflowResult   `yaml:"has_workflow_result"`
 }
 
 func (p *Predicates) Predicates() []Predicate {
@@ -88,12 +90,20 @@ func (p *Predicates) Predicates() []Predicate {
 		ps = append(ps, Predicate(p.HasStatus))
 	}
 
+	if p.HasStatusCheck != nil {
+		ps = append(ps, Predicate(p.HasStatusCheck))
+	}
+
 	if p.HasSuccessfulStatus != nil {
 		ps = append(ps, Predicate(p.HasSuccessfulStatus))
 	}
 
 	if p.HasWorkflowResult != nil {
 		ps = append(ps, Predicate(p.HasWorkflowResult))
+	}
+
+	if p.HasWorkflow != nil {
+		ps = append(ps, Predicate(p.HasWorkflow))
 	}
 
 	if p.HasLabels != nil {
