@@ -20,6 +20,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/palantir/policy-bot/policy/common"
 	"github.com/palantir/policy-bot/pull"
@@ -59,6 +60,9 @@ func (pred HasWorkflow) Evaluate(ctx context.Context, prctx pull.Context) (*comm
 		allowedStatuses = []string{"completed", "expected", "failure", "in_progress", "pending", "queued", "requested", "startup_failure", "waiting"}
 	}
 
+	// checkStatuses that are in a wating state so should be considdered as missing results
+	waitingStatuses := []string{"expected", "in_progress", "pending", "queued", "requested", "waiting"}
+
 	workflowRuns, err := prctx.LatestWorkflowRuns()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list latest workflow runs")
@@ -82,9 +86,11 @@ func (pred HasWorkflow) Evaluate(ctx context.Context, prctx pull.Context) (*comm
 				allWorkflows = append(allWorkflows, name)
 				for _, workflowResult := range workflowRuns[name] {
 					isStatusAllowed := workflowResult.Status != nil && slices.Contains(allowedStatuses, *workflowResult.Status)
-					isStatusCompletedAllowed := workflowResult.Status != nil && *workflowResult.Status == "completed" && slices.Contains(allowedStatuses, "completed")
+					isStatusCompletedAllowed := workflowResult.Status != nil && slices.Contains(allowedStatuses, "completed")
 					isConclusionAllowed := workflowResult.Conclusion != nil && slices.Contains(allowedConclusions, *workflowResult.Conclusion)
-					if !isStatusAllowed || (isStatusCompletedAllowed && !isConclusionAllowed) {
+					if slices.Contains(waitingStatuses, *workflowResult.Status) && !slices.Contains(allowedStatuses, *workflowResult.Status) {
+						missingResults = append(missingResults, name)
+					} else if !isStatusAllowed || (*workflowResult.Status == "completed" && isStatusCompletedAllowed && !isConclusionAllowed) {
 						failingWorkflows = append(failingWorkflows, name)
 					}
 				}
@@ -105,25 +111,33 @@ func (pred HasWorkflow) Evaluate(ctx context.Context, prctx pull.Context) (*comm
 		),
 	}
 
-	if len(missingResults) > 0 {
-		predicateResult.Values = missingResults
-		slices.Sort(missingResults)
-		predicateResult.Description = fmt.Sprintf("One or more workflow runs are missing: %s", predicateResult.Values)
-		predicateResult.Satisfied = false
-		return &predicateResult, nil
+	checkOrder := []struct {
+		condition bool
+		results   []string
+		message   string
+	}{
+		{pred.noRegex, missingResults, "One or more workflow runs are missing: %s"},
+		{pred.noRegex, failingWorkflows, "One or more workflow runs have currently not status %s and/or conclusion(in case status is completed) %s: %s"},
+		{!pred.noRegex, failingWorkflows, "One or more workflow runs have currently not status %s and/or conclusion(in case status is completed) %s: %s"},
+		{!pred.noRegex, missingResults, "One or more workflow runs are missing: %s"},
 	}
-
-	if len(failingWorkflows) > 0 {
-		predicateResult.Values = failingWorkflows
-		slices.Sort(failingWorkflows)
-		predicateResult.Description = fmt.Sprintf(
-			"One or more workflow runs have currently not status %s and/or conclusion(in case status is completed) %s: %s",
-			joinElementsWithOr(allowedStatuses),
-			joinElementsWithOr(allowedConclusions),
-			failingWorkflows,
-		)
-		predicateResult.Satisfied = false
-		return &predicateResult, nil
+	for _, check := range checkOrder {
+		if check.condition && len(check.results) > 0 {
+			predicateResult.Values = check.results
+			slices.Sort(predicateResult.Values)
+			if strings.Contains(check.message, "%s: %s") {
+				predicateResult.Description = fmt.Sprintf(
+					check.message,
+					joinElementsWithOr(allowedStatuses),
+					joinElementsWithOr(allowedConclusions),
+					check.results,
+				)
+			} else {
+				predicateResult.Description = fmt.Sprintf(check.message, predicateResult.Values)
+			}
+			predicateResult.Satisfied = false
+			return &predicateResult, nil
+		}
 	}
 
 	predicateResult.Values = allWorkflows

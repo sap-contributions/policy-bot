@@ -217,7 +217,8 @@ func TestHasSuccessfulWorkflowResultRun(t *testing.T) {
 				".github/workflows/test2.yml": {mockWorkflowRun("completed", "skipped")},
 			},
 			predicate: HasWorkflowResult{
-				Workflows: []string{".github/workflows/test.yml", ".github/workflows/test2.yml"},
+				Workflows:   []string{".github/workflows/test.yml", ".github/workflows/test2.yml"},
+				Conclusions: []string{"success", "skipped"},
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,

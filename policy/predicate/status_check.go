@@ -63,6 +63,9 @@ func (pred HasStatusCheck) Evaluate(ctx context.Context, prctx pull.Context) (*c
 		allowedStatuses = []string{"completed", "expected", "failure", "in_progress", "pending", "queued", "requested", "startup_failure", "waiting", "error", "success"}
 	}
 
+	// checkStatuses that are in a wating state so should be considdered as missing results
+	waitingStatuses := []string{"expected", "in_progress", "pending", "queued", "requested", "waiting"}
+
 	checkStatuses, err := prctx.LatestCheckStatuses()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list commit statuses")
@@ -92,7 +95,9 @@ func (pred HasStatusCheck) Evaluate(ctx context.Context, prctx pull.Context) (*c
 				checkResult := checkStatuses[checkResultName]
 				isValidStatus := slices.Contains(allowedStatuses, *checkResult.Status)
 				isValidConclusion := checkResult.Conclusion != nil && slices.Contains(allowedConclusions, *checkResult.Conclusion)
-				if (checkResult.Status == nil || !isValidStatus) ||
+				if slices.Contains(waitingStatuses, *checkResult.Status) && !isValidStatus {
+					missingResults[checkResultName] = checkResultName
+				} else if (checkResult.Status == nil || !isValidStatus) ||
 					(*checkResult.Status == "completed" && !isValidConclusion) {
 					failingStatuses[checkResultName] = checkResultName
 				}
@@ -103,7 +108,9 @@ func (pred HasStatusCheck) Evaluate(ctx context.Context, prctx pull.Context) (*c
 				matched = true
 				allChecks[repoStatusName] = repoStatusName
 				repoStatusResult := repoStatuses[repoStatusName]
-				if repoStatusResult == nil || repoStatusResult.State == nil || !slices.Contains(allowedStatuses, *repoStatusResult.State) {
+				if *repoStatusResult.State == "pending" && !slices.Contains(allowedStatuses, "pending") {
+					missingResults[repoStatusName] = repoStatusName
+				} else if !slices.Contains(allowedStatuses, *repoStatusResult.State) {
 					failingStatuses[repoStatusName] = repoStatusName
 				}
 			}
@@ -124,18 +131,28 @@ func (pred HasStatusCheck) Evaluate(ctx context.Context, prctx pull.Context) (*c
 		),
 	}
 
-	if len(missingResults) > 0 {
-		predicateResult.Values = slices.Sorted(maps.Keys(missingResults))
-		predicateResult.Description = fmt.Sprintf("One or more status checks or repo statuses are missing: %s", predicateResult.Values)
-		predicateResult.Satisfied = false
-		return &predicateResult, nil
+	checkOrder := []struct {
+		condition bool
+		results   map[string]string
+		message   string
+	}{
+		{pred.noRegex, missingResults, "One or more status checks or repo statuses are missing: %s"},
+		{pred.noRegex, failingStatuses, "One or more status checks or repo statuses have not concluded with %s: %s"},
+		{!pred.noRegex, failingStatuses, "One or more status checks or repo statuses have not concluded with %s: %s"},
+		{!pred.noRegex, missingResults, "One or more status checks or repo statuses are missing: %s"},
 	}
 
-	if len(failingStatuses) > 0 {
-		predicateResult.Values = slices.Sorted(maps.Keys(failingStatuses))
-		predicateResult.Description = fmt.Sprintf("One or more status checks or repo statuses have not concluded with %s: %s", joinElementsWithOr(allowedConclusions), failingStatuses)
-		predicateResult.Satisfied = false
-		return &predicateResult, nil
+	for _, check := range checkOrder {
+		if check.condition && len(check.results) > 0 {
+			predicateResult.Values = slices.Sorted(maps.Keys(check.results))
+			if strings.Contains(check.message, "%s: %s") {
+				predicateResult.Description = fmt.Sprintf(check.message, joinElementsWithOr(allowedConclusions), check.results)
+			} else {
+				predicateResult.Description = fmt.Sprintf(check.message, predicateResult.Values)
+			}
+			predicateResult.Satisfied = false
+			return &predicateResult, nil
+		}
 	}
 
 	predicateResult.Values = allChecksList

@@ -209,7 +209,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 		},
 		{
-			name: "a status check has non completed status",
+			name: "a status check has non valid statuses and non ones in non accepted states, it should fail not reporting missing results",
 			LatestCheckStatusesValue: map[string]*github.CheckRun{
 				"test":  mockCheckRun("completed", "success"),
 				"test1": mockCheckRun("expected", ""),
@@ -227,7 +227,26 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test1", "test2", "test3", "test4", "test5", "test6", "test7", "test8", "test9"},
+				Values:    []string{"test2", "test7", "test9"},
+			},
+		},
+		{
+			name: "a status check has non non completed ones so they shall be considered as missing results",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{
+				"test":  mockCheckRun("completed", "success"),
+				"test1": mockCheckRun("expected", ""),
+				"test3": mockCheckRun("in_progress", ""),
+				"test4": mockCheckRun("pending", ""),
+				"test5": mockCheckRun("queued", ""),
+				"test6": mockCheckRun("requested", ""),
+				"test8": mockCheckRun("waiting", ""),
+			},
+			predicate: HasStatusCheck{
+				Checks: []common.Regexp{common.NewMustCompileRegexp(".*")},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: false,
+				Values:    []string{"test1", "test3", "test4", "test5", "test6", "test8"},
 			},
 		},
 		{
@@ -372,7 +391,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test1", "test2", "test3", "test4", "test5", "test6", "test7", "test8"},
+				Values:    []string{"test2", "test7"},
 			},
 		},
 		{
@@ -384,7 +403,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test", "test2", "test3", "test4", "test5", "test6", "test7", "test8"},
+				Values:    []string{"test", "test2", "test7"},
 			},
 		},
 		{
@@ -396,7 +415,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test", "test1", "test3", "test4", "test5", "test6", "test7", "test8"},
+				Values:    []string{"test", "test7"},
 			},
 		},
 		{
@@ -408,7 +427,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test", "test1", "test2", "test4", "test5", "test6", "test7", "test8"},
+				Values:    []string{"test", "test2", "test7"},
 			},
 		},
 		{
@@ -420,7 +439,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test", "test1", "test2", "test3", "test5", "test6", "test7", "test8"},
+				Values:    []string{"test", "test2", "test7"},
 			},
 		},
 		{
@@ -432,7 +451,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test", "test1", "test2", "test3", "test4", "test6", "test7", "test8"},
+				Values:    []string{"test", "test2", "test7"},
 			},
 		},
 		{
@@ -444,7 +463,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test", "test1", "test2", "test3", "test4", "test5", "test7", "test8"},
+				Values:    []string{"test", "test2", "test7"},
 			},
 		},
 		{
@@ -456,7 +475,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test", "test1", "test2", "test3", "test4", "test5", "test6", "test8"},
+				Values:    []string{"test", "test2"},
 			},
 		},
 		{
@@ -468,7 +487,118 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test", "test1", "test2", "test3", "test4", "test5", "test6", "test7"},
+				Values:    []string{"test", "test2", "test7"},
+			},
+		},
+	}
+
+	customStatusCheckTestCasesPositiv := []StatusCheckTestCase{
+		{
+			name:                     "status checks exist in status completed, conclusion success and status completed is allowed",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{"test": mockCheckRun("completed", "success")},
+			predicate: HasStatusCheck{
+				Checks:   []common.Regexp{common.NewMustCompileRegexp(".*")},
+				Statuses: []string{"completed"},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: true,
+				Values:    []string{"test"},
+			},
+		},
+		{
+			name:                     "status checks exist with status expected and status expected is allowed",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{"test": mockCheckRun("expected", "")},
+			predicate: HasStatusCheck{
+				Checks:   []common.Regexp{common.NewMustCompileRegexp(".*")},
+				Statuses: []string{"expected"},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: true,
+				Values:    []string{"test"},
+			},
+		},
+		{
+			name:                     "status checks exist with status failure and status failure is allowed",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{"test": mockCheckRun("failure", "")},
+			predicate: HasStatusCheck{
+				Checks:   []common.Regexp{common.NewMustCompileRegexp(".*")},
+				Statuses: []string{"failure"},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: true,
+				Values:    []string{"test"},
+			},
+		},
+		{
+			name:                     "status checks exist with status in_progress and status in_progress is allowed",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{"test": mockCheckRun("in_progress", "")},
+			predicate: HasStatusCheck{
+				Checks:   []common.Regexp{common.NewMustCompileRegexp(".*")},
+				Statuses: []string{"in_progress"},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: true,
+				Values:    []string{"test"},
+			},
+		},
+		{
+			name:                     "status checks exist with status pending and status pending is allowed",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{"test": mockCheckRun("pending", "")},
+			predicate: HasStatusCheck{
+				Checks:   []common.Regexp{common.NewMustCompileRegexp(".*")},
+				Statuses: []string{"pending"},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: true,
+				Values:    []string{"test"},
+			},
+		},
+		{
+			name:                     "status checks exist with status queued and status queued is allowed",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{"test": mockCheckRun("queued", "")},
+			predicate: HasStatusCheck{
+				Checks:   []common.Regexp{common.NewMustCompileRegexp(".*")},
+				Statuses: []string{"queued"},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: true,
+				Values:    []string{"test"},
+			},
+		},
+		{
+			name:                     "status checks exist with status requested and status requested is allowed",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{"test": mockCheckRun("requested", "")},
+			predicate: HasStatusCheck{
+				Checks:   []common.Regexp{common.NewMustCompileRegexp(".*")},
+				Statuses: []string{"requested"},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: true,
+				Values:    []string{"test"},
+			},
+		},
+		{
+			name:                     "status checks exist with status startup_failure and status startup_failure is allowed",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{"test": mockCheckRun("startup_failure", "")},
+			predicate: HasStatusCheck{
+				Checks:   []common.Regexp{common.NewMustCompileRegexp(".*")},
+				Statuses: []string{"startup_failure"},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: true,
+				Values:    []string{"test"},
+			},
+		},
+		{
+			name:                     "status checks exist with status waiting and status waiting is allowed",
+			LatestCheckStatusesValue: map[string]*github.CheckRun{"test": mockCheckRun("waiting", "")},
+			predicate: HasStatusCheck{
+				Checks:   []common.Regexp{common.NewMustCompileRegexp(".*")},
+				Statuses: []string{"waiting"},
+			},
+			ExpectedPredicateResult: &common.PredicateResult{
+				Satisfied: true,
+				Values:    []string{"test"},
 			},
 		},
 	}
@@ -580,7 +710,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test2", "test3", "test4"},
+				Values:    []string{"test2", "test4"},
 			},
 		},
 	}
@@ -595,7 +725,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test2", "test3", "test4"},
+				Values:    []string{"test2", "test4"},
 			},
 		},
 		{
@@ -607,7 +737,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test1", "test3", "test4"},
+				Values:    []string{"test1", "test4"},
 			},
 		},
 		{
@@ -631,7 +761,7 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"test1", "test2", "test3"},
+				Values:    []string{"test1", "test2"},
 			},
 		},
 	}
@@ -716,13 +846,14 @@ func TestHasStatusCheck(t *testing.T) {
 			},
 			ExpectedPredicateResult: &common.PredicateResult{
 				Satisfied: false,
-				Values:    []string{"abc", "test2", "test3", "test4"},
+				Values:    []string{"abc", "test2", "test4"},
 			},
 		},
 	}
 
 	runStatusCheckTestCase(t, defaultChecksTestCases)
 	runStatusCheckTestCase(t, customConclusionChecksTestCases)
+	runStatusCheckTestCase(t, customStatusCheckTestCasesPositiv)
 	runStatusCheckTestCase(t, customStatusCheckTestCases)
 	runStatusCheckTestCase(t, defaultRepoStatusTestCases)
 	runStatusCheckTestCase(t, customStatusRepoStatusTestCases)
